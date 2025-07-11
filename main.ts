@@ -31,22 +31,24 @@ export default class MyPlugin extends Plugin {
 		removedHeadings: [],
 		addedHeadings: [],
 	};
+	handleFileModificationBinded = this.handleFileModification.bind(this);
 	async onload() {
 		this.metadataCache = this.app.metadataCache;
 
 		// Listen for file changes
 		this.registerEvent(
-			this.app.vault.on("modify", async (file: TFile) => {
-				if (file.extension === "md") {
-					await this.handleFileModification(file);
-				}
-			})
+			this.app.vault.on("modify", this.handleFileModificationBinded)
 		);
 	}
 
-	onunload() {}
+	onunload() {
+		//this.app.vault.off("modify", this.handleFileModificationBinded);
+	}
 
 	async handleFileModification(file: TFile) {
+		if (file.extension !== "md") {
+			return;
+		}
 		const fileContent = await this.app.vault.read(file);
 		const newHeadings = this.extractHeadings(fileContent, file);
 		const oldHeadings = (
@@ -80,8 +82,8 @@ export default class MyPlugin extends Plugin {
 		//*均有表示有标题移动且已完成
 		if (this.modifiedFiles.newFile && this.modifiedFiles.oldFile) {
 			const movedHeadings = this.findMovedHeadings();
-			console.log({ movedHeadings });
 			if (movedHeadings.length > 0) {
+				console.log({ movedHeadings });
 				await this.updateWikiLinks(movedHeadings);
 				//* 移动完成后清空
 				this.modifiedFiles.newFile = null;
@@ -145,6 +147,15 @@ export default class MyPlugin extends Plugin {
 	 * @returns newFile仅作为调试备用
 	 */
 	findMovedHeadings(): (Heading & { newFile: TFile })[] {
+		//* 同文件内复制粘贴不算移动
+		if (
+			this.modifiedFiles.oldFile &&
+			this.modifiedFiles.newFile &&
+			this.modifiedFiles.oldFile.path === this.modifiedFiles.newFile.path
+		) {
+			return [];
+		}
+
 		const movedHeadings: (Heading & { newFile: TFile })[] = [];
 		for (const addedHeading of this.movedHeadings.addedHeadings) {
 			const removedHeading = this.movedHeadings.removedHeadings.find(
@@ -164,8 +175,16 @@ export default class MyPlugin extends Plugin {
 		let count = 0;
 		const allFiles = this.app.vault.getMarkdownFiles();
 		for (const targetFile of allFiles) {
-			//* 本文件内的引用也要修改
-			//if (targetFile.path === file.path) continue;
+			//* 本文件内的引用也要修改，但需要关闭监听(避免循环触发)
+			let listening = true;
+			if (
+				targetFile.path ===
+					(this.modifiedFiles.oldFile as TFile).path ||
+				targetFile.path === (this.modifiedFiles.newFile as TFile).path
+			) {
+				listening = false;
+				this.app.vault.off("modify", this.handleFileModificationBinded);
+			}
 			const content = await this.app.vault.read(targetFile);
 			let newContent = content;
 
@@ -188,6 +207,9 @@ export default class MyPlugin extends Plugin {
 
 			if (newContent !== content) {
 				await this.app.vault.modify(targetFile, newContent);
+			}
+			if (!listening) {
+				this.app.vault.on("modify", this.handleFileModificationBinded);
 			}
 		}
 		new Notice(`已修改${count}个文件中的wiki链接`);
