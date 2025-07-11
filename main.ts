@@ -71,14 +71,16 @@ export default class MyPlugin extends Plugin {
 		if (addedHeadings.length > 0) {
 			this.modifiedFiles.newFile = file;
 			this.movedHeadings.addedHeadings = addedHeadings;
+			console.log("有标题增加", file.path, addedHeadings);
 		} else if (removedHeadings.length > 0) {
 			this.modifiedFiles.oldFile = file;
 			this.movedHeadings.removedHeadings = removedHeadings;
+			console.log("有标题减少", file.path, removedHeadings);
 		}
 		//*均有表示有标题移动且已完成
 		if (this.modifiedFiles.newFile && this.modifiedFiles.oldFile) {
 			const movedHeadings = this.findMovedHeadings();
-			//console.log({ movedHeadings });
+			console.log({ movedHeadings });
 			if (movedHeadings.length > 0) {
 				await this.updateWikiLinks(movedHeadings);
 				//* 移动完成后清空
