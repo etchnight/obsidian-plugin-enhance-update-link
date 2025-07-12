@@ -206,7 +206,10 @@ export default class MyPlugin extends Plugin {
 			}
 
 			if (newContent !== content) {
-				await this.app.vault.modify(targetFile, newContent);
+				//* https://docs.obsidian.md/Plugins/Vault#Modify+files
+				await this.app.vault.process(targetFile, (data) => {
+					return newContent;
+				});
 			}
 		}
 		new Notice(`已修改${count}个文件中的wiki链接`);
