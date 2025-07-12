@@ -114,9 +114,8 @@ export default class MyPlugin extends Plugin {
 	}
 
 	/**
-	 * 找到从oldHeadings没有，在newHeadings中有的标题
-	 * 查找标准为标题内容相同/位置相同
-	 * 这仅表示标题的增加或删除，移动并没有完成
+	 * 默认表示标题增加的情形，即找到从oldHeadings没有，在newHeadings中有的标题
+	 * 这仅表示一个文件内标题的增加或删除，移动并没有完成
 	 * @param oldHeadings
 	 * @param newHeadings
 	 * @returns
@@ -126,16 +125,28 @@ export default class MyPlugin extends Plugin {
 		newHeadings: Heading[]
 	): Heading[] {
 		const movedHeadings: Heading[] = [];
-
-		newHeadings.forEach((newHeading) => {
+		//console.group("findChangedHeadings");
+		//console.log(oldHeadings.map((e) => e.heading));
+		//console.log(newHeadings.map((e) => e.heading));
+		let oldHeadingsCopy = oldHeadings.map((e) => {
+			return { ...e };
+		});
+		for (const newHeading of newHeadings) {
 			//* 排除项
-			const existHeading = oldHeadings.find(
+			const unchangeHeadingIndex = oldHeadingsCopy.findIndex(
 				(h) => h.heading === newHeading.heading
 			);
-			if (!existHeading) {
+			if (unchangeHeadingIndex === -1) {
+				//console.log("未找到相同标题", newHeading.heading);
 				movedHeadings.push(newHeading);
+			} else {
+				//* 在一篇笔记中可能存在多个相同标题，如果找到一个，那么就移除一个
+				oldHeadingsCopy.splice(unchangeHeadingIndex, 1);
+				//console.log("找到相同标题", newHeading.heading);
 			}
-		});
+		}
+		//console.log(movedHeadings);
+		//console.groupEnd();
 		return movedHeadings;
 	}
 
@@ -150,9 +161,9 @@ export default class MyPlugin extends Plugin {
 				(removedHeading) => {
 					if (removedHeading.file.path === addedHeading.file.path) {
 						//* 同文件内标题更改但位置不变的算移动
-						//* 同文件内已经排除了标题相同的情况（findChangedHeadings）
 						return (
-							removedHeading.position === addedHeading.position
+							removedHeading.position === addedHeading.position &&
+							removedHeading.heading !== addedHeading.heading
 						);
 					} else {
 						//* 不同文件标题相同的算移动
