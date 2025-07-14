@@ -192,7 +192,7 @@ export default class MyPlugin extends Plugin {
 				const linkPattern = new RegExp(
 					`\\[\\[${
 						(this.modifiedFiles.oldFile as TFile).basename
-					}#${this.escapeRegExp(heading.heading)}\\]\\]`,
+					}#${this.escapeRegExp(heading.heading)}(.*?)\\]\\]`,
 					"g"
 				);
 				if (!linkPattern.test(content)) continue;
@@ -200,7 +200,7 @@ export default class MyPlugin extends Plugin {
 					linkPattern,
 					`[[${(this.modifiedFiles.newFile as TFile).basename}#${
 						heading.newHeading
-					}]]`
+					}$1]]`
 				);
 				count++;
 			}
