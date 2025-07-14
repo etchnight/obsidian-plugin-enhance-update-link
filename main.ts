@@ -195,12 +195,34 @@ export default class MyPlugin extends Plugin {
 					}#${this.escapeRegExp(heading.heading)}(.*?)\\]\\]`,
 					"g"
 				);
-				if (!linkPattern.test(content)) continue;
+				//* 为了更新query块
+				const slash = `\\\\`; //斜杠
+				const linkPattern2 = new RegExp(
+					`${slash}\\[${slash}\\[${
+						(this.modifiedFiles.oldFile as TFile).basename
+					}#${this.escapeRegExp(
+						heading.heading
+					)}(.*?)${slash}\\]${slash}\\]`,
+					"g"
+				);
+				console.log({
+					linkPattern,
+					linkPattern2,
+				});
+
+				if (!linkPattern.test(content) && !linkPattern2.test(content))
+					continue;
 				newContent = newContent.replace(
 					linkPattern,
 					`[[${(this.modifiedFiles.newFile as TFile).basename}#${
 						heading.newHeading
 					}$1]]`
+				);
+				newContent = newContent.replace(
+					linkPattern2,
+					`\\[\\[${(this.modifiedFiles.newFile as TFile).basename}#${
+						heading.newHeading
+					}$1\\]\\]`
 				);
 				count++;
 			}
