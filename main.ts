@@ -216,13 +216,9 @@ export default class MyPlugin extends Plugin {
 					)}(.*?)${slash}\\]${slash}\\]`,
 					"g"
 				);
-				console.log({
-					linkPattern,
-					linkPattern2,
-				});
-
 				if (!linkPattern.test(content) && !linkPattern2.test(content))
 					continue;
+				debugConsole.log("找到需要替换的文件", targetFile.path);
 				newContent = newContent.replace(
 					linkPattern,
 					`[[${(this.modifiedFiles.newFile as TFile).basename}#${
