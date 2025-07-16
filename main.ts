@@ -198,24 +198,25 @@ export default class MyPlugin extends Plugin {
 		for (const targetFile of allFiles) {
 			const content = await this.app.vault.read(targetFile);
 			let newContent = content;
-
+			//
+			const slash = `\\\\`; //斜杠
 			for (const heading of movedHeadings) {
 				const linkPattern = new RegExp(
 					`\\[\\[${
 						(this.modifiedFiles.oldFile as TFile).basename
-					}#${this.escapeRegExp(heading.heading)}(.*?)\\]\\]`,
+					}#${this.escapeRegExp(heading.heading)}(\\|.*?)?\\]\\]`,
 					"g"
 				);
 				//* 为了更新query块
-				const slash = `\\\\`; //斜杠
 				const linkPattern2 = new RegExp(
 					`${slash}\\[${slash}\\[${
 						(this.modifiedFiles.oldFile as TFile).basename
 					}#${this.escapeRegExp(
 						heading.heading
-					)}(.*?)${slash}\\]${slash}\\]`,
+					)}(${slash}\\|.*?)?${slash}\\]${slash}\\]`,
 					"g"
 				);
+				console.log(linkPattern2,linkPattern);
 				if (!linkPattern.test(content) && !linkPattern2.test(content))
 					continue;
 				debugConsole.log("找到需要替换的文件", targetFile.path);
