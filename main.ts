@@ -7,16 +7,15 @@ interface Heading {
 	file: TFile;
 }
 
-const debug = true;
-
-const debugConsole: typeof console = console;
-if (!debug) {
-	debugConsole.log = () => {};
-	debugConsole.warn = () => {};
-	debugConsole.error = () => {};
-}
-
 export default class MyPlugin extends Plugin {
+	debug = true;
+	debugConsole: {
+		log: (...args: any) => void;
+		warn: (...args: any) => void;
+		error: (...args: any) => void;
+		group: (...args: any) => void;
+		groupEnd: () => void;
+	};
 	metadataCache: MetadataCache;
 	modifiedFiles: { oldFile: TFile | null; newFile: TFile | null } = {
 		oldFile: null,
@@ -35,6 +34,18 @@ export default class MyPlugin extends Plugin {
 		//this.registerEvent(
 		this.app.vault.on("modify", this.handleFileModificationBinded);
 		//);
+
+		if (this.debug) {
+			this.debugConsole = console;
+		} else {
+			this.debugConsole = {
+				log: () => {},
+				warn: () => {},
+				error: () => {},
+				group: () => {},
+				groupEnd: () => {},
+			};
+		}
 	}
 
 	onunload() {
@@ -42,8 +53,8 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async handleFileModification(file: TFile) {
-		debugConsole.group("文件修改事件");
-		debugConsole.log("触发文件修改事件", file.path);
+		this.debugConsole.group("文件修改事件");
+		this.debugConsole.log("触发文件修改事件", file.path);
 		if (file.extension !== "md") {
 			return;
 		}
@@ -74,18 +85,18 @@ export default class MyPlugin extends Plugin {
 		if (addedHeadings.length > 0) {
 			this.modifiedFiles.newFile = file;
 			this.movedHeadings.addedHeadings = addedHeadings;
-			debugConsole.log("有标题增加", file.path, addedHeadings);
+			this.debugConsole.log("有标题增加", file.path, addedHeadings);
 		}
 		if (removedHeadings.length > 0) {
 			this.modifiedFiles.oldFile = file;
 			this.movedHeadings.removedHeadings = removedHeadings;
-			debugConsole.log("有标题减少", file.path, removedHeadings);
+			this.debugConsole.log("有标题减少", file.path, removedHeadings);
 		}
 		//*均有表示有标题移动且已完成
 		if (this.modifiedFiles.newFile && this.modifiedFiles.oldFile) {
 			const movedHeadings = this.findMovedHeadings();
 			if (movedHeadings.length > 0) {
-				debugConsole.log({ movedHeadings });
+				this.debugConsole.log({ movedHeadings });
 				//*对所有自动更新都应该关闭触发事件（避免循环触发）
 				this.app.vault.off("modify", this.handleFileModificationBinded);
 				await this.updateWikiLinks(movedHeadings);
@@ -97,7 +108,7 @@ export default class MyPlugin extends Plugin {
 				this.movedHeadings.removedHeadings = [];
 			}
 		}
-		debugConsole.groupEnd();
+		this.debugConsole.groupEnd();
 	}
 
 	/**
@@ -216,10 +227,9 @@ export default class MyPlugin extends Plugin {
 					)}(${slash}\\|.*?)?${slash}\\]${slash}\\]`,
 					"g"
 				);
-				console.log(linkPattern2,linkPattern);
 				if (!linkPattern.test(content) && !linkPattern2.test(content))
 					continue;
-				debugConsole.log("找到需要替换的文件", targetFile.path);
+				this.debugConsole.log("找到需要替换的文件", targetFile.path);
 				newContent = newContent.replace(
 					linkPattern,
 					`[[${(this.modifiedFiles.newFile as TFile).basename}#${
