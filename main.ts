@@ -242,6 +242,7 @@ export default class MyPlugin extends Plugin {
 						heading.newHeading
 					}$1\\]\\]`
 				);
+				new Notice(`${targetFile.path}中链接已更新`);
 				count++;
 			}
 
@@ -252,7 +253,7 @@ export default class MyPlugin extends Plugin {
 				});
 			}
 		}
-		new Notice(`已修改${count}个文件中的wiki链接`);
+		//new Notice(`已修改${count}个文件中的wiki链接`);
 	}
 
 	escapeRegExp(string: string): string {
