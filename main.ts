@@ -53,7 +53,7 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async handleFileModification(file: TFile) {
-		this.debugConsole.group("文件修改事件");
+		this.debugConsole.group("enhance-update-link");
 		this.debugConsole.log("触发文件修改事件", file.path);
 		if (file.extension !== "md") {
 			this.debugConsole.groupEnd();
@@ -100,6 +100,8 @@ export default class MyPlugin extends Plugin {
 				const currentOldFile = this.modifiedFiles.oldFile;
 				const currentNewFile = this.modifiedFiles.newFile;
 				const currentMovedHeadings = this.findMovedHeadings();
+				const currentMovedHeadingsForTag =
+					this.findMovedHeadingsForTag();
 
 				// 立即清空状态，防止后续事件干扰
 				this.modifiedFiles.newFile = null;
@@ -108,27 +110,39 @@ export default class MyPlugin extends Plugin {
 				this.movedHeadings.removedHeadings = [];
 				this.debugConsole.log("所有状态清空");
 
-				if (currentMovedHeadings.length > 0) {
-					this.debugConsole.log(
-						"移动/修改的标题：",
-						currentMovedHeadings,
-					);
+				if (
+					currentMovedHeadings.length > 0 ||
+					currentMovedHeadingsForTag.length > 0
+				) {
 					//*对所有自动更新都应该关闭触发事件（避免循环触发）
 					this.app.vault.off(
 						"modify",
 						this.handleFileModificationBinded,
 					);
 					try {
-						await this.updateWikiLinks(
-							currentMovedHeadings,
-							currentOldFile,
-							currentNewFile,
+						if (currentMovedHeadings.length > 0) {
+							this.debugConsole.log(
+								"移动/修改的标题（链接修改）：",
+								currentMovedHeadings,
+							);
+							await this.updateWikiLinks(
+								currentMovedHeadings,
+								currentOldFile,
+								currentNewFile,
+							);
+						}
+						if (currentMovedHeadingsForTag.length > 0) {
+							await this.updateTags(
+								currentMovedHeadingsForTag,
+								currentOldFile,
+								currentNewFile,
+							);
+						}
+						this.debugConsole.log(
+							"移动/修改的标题（标签修改）：",
+							currentMovedHeadingsForTag,
 						);
-						await this.updateTags(
-							currentMovedHeadings,
-							currentOldFile,
-							currentNewFile,
-						);
+
 						this.debugConsole.log("更新完成");
 					} finally {
 						// 确保事件监听器始终被恢复
@@ -206,10 +220,17 @@ export default class MyPlugin extends Plugin {
 			return { ...e };
 		});
 		for (const newHeading of newHeadings) {
-			//* 排除项
-			const unchangedHeadingIndex = oldHeadingsCopy.findIndex(
-				(h) => h.heading === newHeading.heading,
-			);
+			//* 排除空标题
+			if (!newHeading.heading.trim()) {
+				continue;
+			}
+			//* 排除内容和等级相同的标题
+			const unchangedHeadingIndex = oldHeadingsCopy.findIndex((h) => {
+				return (
+					h.heading === newHeading.heading &&
+					h.level === newHeading.level
+				);
+			});
 			if (unchangedHeadingIndex === -1) {
 				//console.log("未找到相同标题", newHeading.heading);
 				movedHeadings.push(newHeading);
@@ -225,7 +246,7 @@ export default class MyPlugin extends Plugin {
 	}
 
 	/**
-	 * 找到已移动的标题
+	 * 对比增加和删除的标题，找到移动的标题
 	 * @returns newFile仅作为调试备用
 	 */
 	findMovedHeadings(): (Heading & { newHeading: string })[] {
@@ -239,6 +260,42 @@ export default class MyPlugin extends Plugin {
 							removedHeading.position === addedHeading.position &&
 							removedHeading.heading !== addedHeading.heading
 						);
+					} else {
+						//* 不同文件标题相同的算移动
+						return removedHeading.heading === addedHeading.heading;
+					}
+				},
+			);
+			if (removedHeading) {
+				movedHeadings.push({
+					...removedHeading,
+					newHeading: addedHeading.heading,
+				});
+			}
+		}
+		return movedHeadings;
+	}
+
+	/**
+	 * 对比增加和删除的标题，找到移动的标题
+	 * @returns newFile仅作为调试备用
+	 */
+	findMovedHeadingsForTag(): (Heading & { newHeading: string })[] {
+		const movedHeadings: (Heading & { newHeading: string })[] = [];
+		for (const addedHeading of this.movedHeadings.addedHeadings) {
+			const removedHeading = this.movedHeadings.removedHeadings.find(
+				(removedHeading) => {
+					if (removedHeading.file.path === addedHeading.file.path) {
+						//* 同文件内标题或层级更改但位置不变的算移动
+						if (removedHeading.position !== addedHeading.position) {
+							return false;
+						} else if (
+							removedHeading.heading !== addedHeading.heading ||
+							removedHeading.level !== addedHeading.level
+						) {
+							return true;
+						}
+						return false;
 					} else {
 						//* 不同文件标题相同的算移动
 						return removedHeading.heading === addedHeading.heading;
@@ -339,10 +396,9 @@ export default class MyPlugin extends Plugin {
 						oldFile.path.lastIndexOf(oldFile.name),
 					);
 					const tagPattern = new RegExp(
-						`#${prefix}(.*?)${this.escapeRegExp(heading.heading)}`,
+						`#${this.escapeRegExp(prefix)}(\\S*?)${this.escapeRegExp(heading.heading)}([\n/ ])`,
 						"g",
 					);
-
 					if (!tagPattern.test(newContent)) {
 						continue;
 					}
@@ -358,7 +414,7 @@ export default class MyPlugin extends Plugin {
 					const beforeReplace = newContent;
 					newContent = newContent.replace(
 						tagPattern,
-						`#${newPrefix}${tag}`,
+						`#${newPrefix}${tag}$2`,
 					);
 
 					if (newContent !== beforeReplace) {
