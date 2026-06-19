@@ -109,7 +109,7 @@ export default class MyPlugin extends Plugin {
 				this.debugConsole.log("所有状态清空");
 
 				if (currentMovedHeadings.length > 0) {
-					this.debugConsole.log({ currentMovedHeadings });
+					this.debugConsole.log("移动/修改的标题：", currentMovedHeadings);
 					//*对所有自动更新都应该关闭触发事件（避免循环触发）
 					this.app.vault.off(
 						"modify",
@@ -121,6 +121,7 @@ export default class MyPlugin extends Plugin {
 							currentOldFile,
 							currentNewFile,
 						);
+						this.debugConsole.log("更新完成");
 					} finally {
 						// 确保事件监听器始终被恢复
 						this.app.vault.on(
@@ -128,6 +129,8 @@ export default class MyPlugin extends Plugin {
 							this.handleFileModificationBinded,
 						);
 					}
+				} else {
+					this.debugConsole.log("没有移动/修改的标题,无需更新");
 				}
 			}
 			//* 无论是否更新，新标题增加后，都需要清空状态，以彻底终止此次操作
