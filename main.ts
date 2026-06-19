@@ -109,7 +109,10 @@ export default class MyPlugin extends Plugin {
 				this.debugConsole.log("所有状态清空");
 
 				if (currentMovedHeadings.length > 0) {
-					this.debugConsole.log("移动/修改的标题：", currentMovedHeadings);
+					this.debugConsole.log(
+						"移动/修改的标题：",
+						currentMovedHeadings,
+					);
 					//*对所有自动更新都应该关闭触发事件（避免循环触发）
 					this.app.vault.off(
 						"modify",
@@ -117,6 +120,11 @@ export default class MyPlugin extends Plugin {
 					);
 					try {
 						await this.updateWikiLinks(
+							currentMovedHeadings,
+							currentOldFile,
+							currentNewFile,
+						);
+						await this.updateTags(
 							currentMovedHeadings,
 							currentOldFile,
 							currentNewFile,
@@ -307,7 +315,106 @@ export default class MyPlugin extends Plugin {
 		//new Notice(`已修改${count}个文件中的wiki链接`);
 	}
 
+	/**
+	 * 更新基于标题的标签
+	 * @param movedHeadings
+	 * @param oldFile
+	 * @param newFile
+	 */
+	async updateTags(
+		movedHeadings: (Heading & { newHeading: string })[],
+		oldFile: TFile,
+		newFile: TFile,
+	) {
+		let count = 0;
+		const allFiles = this.app.vault.getMarkdownFiles();
+		for (const targetFile of allFiles) {
+			// 使用 process 方法的回调函数进行原子性修改，避免覆盖其他修改
+			let hasChanges = false;
+			await this.app.vault.process(targetFile, (content) => {
+				let newContent = content;
+				for (const heading of movedHeadings) {
+					const prefix = oldFile.path.slice(
+						0,
+						oldFile.path.lastIndexOf(oldFile.name),
+					);
+					const tagPattern = new RegExp(
+						`#${prefix}(.*?)${this.escapeRegExp(heading.heading)}`,
+						"g",
+					);
+
+					if (!tagPattern.test(newContent)) {
+						continue;
+					}
+
+					const newPrefix = newFile.path.slice(
+						0,
+						newFile.path.lastIndexOf(newFile.name),
+					);
+					const tag = this.buildTags(newContent, heading.newHeading);
+
+					// 直接执行替换，通过比较替换前后内容判断是否有变化
+					// 避免使用 test() 导致的 lastIndex 副作用
+					const beforeReplace = newContent;
+					newContent = newContent.replace(
+						tagPattern,
+						`#${newPrefix}${tag}`,
+					);
+
+					if (newContent !== beforeReplace) {
+						this.debugConsole.log(
+							"找到需要替换的文件(标签)",
+							targetFile.path,
+						);
+						hasChanges = true;
+					}
+				}
+
+				if (hasChanges) {
+					new Notice(`${targetFile.path}中标签已更新`);
+					count++;
+				}
+
+				return newContent;
+			});
+		}
+		//new Notice(`已修改${count}个文件中的wiki链接`);
+	}
+
 	escapeRegExp(string: string): string {
 		return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	}
+
+	buildTags(content: string, heading: string): string {
+		const lines = content.split("\n");
+
+		let targetLevel = -1;
+		let tag = heading;
+		for (let i = lines.length - 1; i >= 0; i--) {
+			const line = lines[i];
+			const match = line.match(/^(#+)(\s+)/);
+			if (match) {
+				const level = match[1].length;
+				const spaceLong = match[2].length;
+				const title = line.substring(spaceLong + level).trim();
+				if (title === heading) {
+					targetLevel = level;
+				}
+				// 找到目标标题之间不进行操作
+				if (targetLevel === -1) {
+					continue;
+				}
+				if (level < targetLevel) {
+					tag = title + "/" + tag;
+					targetLevel = level;
+				}
+				//一级标题，直接返回
+				if (targetLevel === 1) {
+					break;
+				}
+			}
+		}
+
+		return tag;
 	}
 }
