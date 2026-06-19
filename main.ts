@@ -78,11 +78,11 @@ export default class MyPlugin extends Plugin {
 			//查找移动的标题并处理
 			const addedHeadings = this.findChangedHeadings(
 				oldHeadings,
-				newHeadings
+				newHeadings,
 			);
 			const removedHeadings = this.findChangedHeadings(
 				newHeadings,
-				oldHeadings
+				oldHeadings,
 			);
 			if (addedHeadings.length > 0) {
 				this.modifiedFiles.newFile = file;
@@ -100,24 +100,50 @@ export default class MyPlugin extends Plugin {
 				const currentOldFile = this.modifiedFiles.oldFile;
 				const currentNewFile = this.modifiedFiles.newFile;
 				const currentMovedHeadings = this.findMovedHeadings();
-				
+
 				// 立即清空状态，防止后续事件干扰
 				this.modifiedFiles.newFile = null;
 				this.modifiedFiles.oldFile = null;
 				this.movedHeadings.addedHeadings = [];
 				this.movedHeadings.removedHeadings = [];
-				
+				this.debugConsole.log("所有状态清空");
+
 				if (currentMovedHeadings.length > 0) {
 					this.debugConsole.log({ currentMovedHeadings });
 					//*对所有自动更新都应该关闭触发事件（避免循环触发）
-					this.app.vault.off("modify", this.handleFileModificationBinded);
+					this.app.vault.off(
+						"modify",
+						this.handleFileModificationBinded,
+					);
 					try {
-						await this.updateWikiLinks(currentMovedHeadings, currentOldFile, currentNewFile);
+						await this.updateWikiLinks(
+							currentMovedHeadings,
+							currentOldFile,
+							currentNewFile,
+						);
 					} finally {
 						// 确保事件监听器始终被恢复
-						this.app.vault.on("modify", this.handleFileModificationBinded);
+						this.app.vault.on(
+							"modify",
+							this.handleFileModificationBinded,
+						);
 					}
 				}
+			}
+			//* 无论是否更新，新标题增加后，都需要清空状态，以彻底终止此次操作
+			/**
+			新增标题的情形有：
+			- 单纯新增标题，没有移动、修改
+			- 新增的标题是由其它位置移动过来的
+			- 对原有标题进行修改
+			以上情形都标志着对标题修改事件的终结
+			*/
+			if (addedHeadings.length > 0) {
+				this.modifiedFiles.newFile = null;
+				this.modifiedFiles.oldFile = null;
+				this.movedHeadings.addedHeadings = [];
+				this.movedHeadings.removedHeadings = [];
+				this.debugConsole.log("所有状态清空");
 			}
 		} catch (error) {
 			this.debugConsole.error("处理文件修改时发生错误:", error);
@@ -159,7 +185,7 @@ export default class MyPlugin extends Plugin {
 	 */
 	findChangedHeadings(
 		oldHeadings: Heading[],
-		newHeadings: Heading[]
+		newHeadings: Heading[],
 	): Heading[] {
 		const movedHeadings: Heading[] = [];
 		//console.group("findChangedHeadings");
@@ -171,7 +197,7 @@ export default class MyPlugin extends Plugin {
 		for (const newHeading of newHeadings) {
 			//* 排除项
 			const unchangedHeadingIndex = oldHeadingsCopy.findIndex(
-				(h) => h.heading === newHeading.heading
+				(h) => h.heading === newHeading.heading,
 			);
 			if (unchangedHeadingIndex === -1) {
 				//console.log("未找到相同标题", newHeading.heading);
@@ -206,7 +232,7 @@ export default class MyPlugin extends Plugin {
 						//* 不同文件标题相同的算移动
 						return removedHeading.heading === addedHeading.heading;
 					}
-				}
+				},
 			);
 			if (removedHeading) {
 				movedHeadings.push({
@@ -221,7 +247,7 @@ export default class MyPlugin extends Plugin {
 	async updateWikiLinks(
 		movedHeadings: (Heading & { newHeading: string })[],
 		oldFile: TFile,
-		newFile: TFile
+		newFile: TFile,
 	) {
 		let count = 0;
 		const allFiles = this.app.vault.getMarkdownFiles();
@@ -234,41 +260,44 @@ export default class MyPlugin extends Plugin {
 				for (const heading of movedHeadings) {
 					const linkPattern = new RegExp(
 						`\\[\\[${oldFile.basename}#${this.escapeRegExp(
-							heading.heading
+							heading.heading,
 						)}(\\|.*?)?\\]\\]`,
-						"g"
+						"g",
 					);
 					//* 为了更新query块
 					const linkPattern2 = new RegExp(
 						`${slash}\\[${slash}\\[${oldFile.basename}#${this.escapeRegExp(
-							heading.heading
+							heading.heading,
 						)}(${slash}\\|.*?)?${slash}\\]${slash}\\]`,
-						"g"
+						"g",
 					);
-					
+
 					// 直接执行替换，通过比较替换前后内容判断是否有变化
 					// 避免使用 test() 导致的 lastIndex 副作用
 					const beforeReplace = newContent;
 					newContent = newContent.replace(
 						linkPattern,
-						`[[${newFile.basename}#${heading.newHeading}$1]]`
+						`[[${newFile.basename}#${heading.newHeading}$1]]`,
 					);
 					newContent = newContent.replace(
 						linkPattern2,
-						`\\[\\[${newFile.basename}#${heading.newHeading}$1\\]\\]`
+						`\\[\\[${newFile.basename}#${heading.newHeading}$1\\]\\]`,
 					);
-					
+
 					if (newContent !== beforeReplace) {
-						this.debugConsole.log("找到需要替换的文件", targetFile.path);
+						this.debugConsole.log(
+							"找到需要替换的文件",
+							targetFile.path,
+						);
 						hasChanges = true;
 					}
 				}
-				
+
 				if (hasChanges) {
 					new Notice(`${targetFile.path}中链接已更新`);
 					count++;
 				}
-				
+
 				return newContent;
 			});
 		}
