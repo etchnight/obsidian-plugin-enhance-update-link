@@ -323,3 +323,122 @@ debug = true;  // 开启调试模式
 - 链接更新详情（包括哪些文件被更新）
 - 标签更新详情（包括构建的标签路径）
 - 状态清空时机
+
+## 日志系统
+
+插件内置了完善的日志系统，支持将操作记录持久化到 Markdown 文件中。
+
+### 日志文件位置
+
+日志功能已封装在独立的模块中：
+- **日志模块**：[src/logger.ts](file:///d:\code_project\obsidian-plugin\.obsidian\plugins\obsidian-plugin-enhance-update-link\src\logger.ts)
+- **日志配置**：使用 `defaultLogConfig` 默认配置
+- **日志实例**：通过 `this.logger` 访问
+
+### 日志配置
+
+```typescript
+logConfig: {
+    enabled: true,                              // 是否启用文件日志
+    logPath: "插件日志/enhance-update-link.md", // 日志文件路径（相对于库根目录）
+    maxLogSize: 1024 * 1024,                    // 最大日志文件大小（1MB），超过则归档
+    consoleOutput: true,                        // 是否同时输出到控制台
+}
+```
+
+### 日志类型
+
+| 类型 | 图标 | 说明 |
+|------|------|------|
+| `link` | 🔗 | Wiki 链接更新记录 |
+| `tag` | 🏷️ | 标签路径更新记录 |
+| `error` | ❌ | 错误信息记录 |
+| `info` | ℹ️ | 一般信息记录 |
+
+### 日志格式示例
+
+日志以 Markdown 格式存储，便于阅读和搜索：
+
+```markdown
+# Enhance Update Link 日志
+
+> 自动生成的操作日志
+
+---
+
+## 🔗 LINK - 2024/1/15 14:30:25
+
+**更新 Wiki 链接**
+
+| 属性 | 值 |
+|------|----|
+| 目标文件 | 笔记/项目笔记.md |
+| 源文件 | 笔记/技术文档.md |
+| 旧标题 | React 组件 |
+| 新标题 | Vue 组件 |
+
+---
+
+## 🏷️ TAG - 2024/1/15 14:30:26
+
+**更新标签路径**
+
+| 属性 | 值 |
+|------|----|
+| 目标文件 | 笔记/项目笔记.md |
+| 源文件 | 笔记/技术文档.md |
+| 旧标签 | 笔记/技术文档/React组件 |
+| 新标签 | 笔记/技术文档/Vue组件 |
+
+---
+```
+
+### 日志归档
+
+当日志文件大小超过 `maxLogSize` 限制时，系统会自动归档旧日志：
+
+- 原日志文件会被重命名为 `enhance-update-link-2024-01-15T14-30-00.md`
+- 新日志文件会被创建，继续记录新的操作
+
+### 自定义日志路径
+
+你可以修改 `logPath` 配置来自定义日志存储位置：
+
+```typescript
+// 存储到根目录
+logPath: "enhance-update-link.md"
+
+// 存储到指定文件夹
+logPath: "Logs/plugin-logs.md"
+
+// 使用中文路径
+logPath: "日志/链接更新日志.md"
+```
+
+### 日志 API
+
+插件提供了以下日志记录方法：
+
+```typescript
+// 记录链接更新
+await this.logLinkUpdate({
+    targetFile: "笔记/项目笔记.md",
+    sourceFile: "笔记/技术文档.md",
+    oldHeading: "React 组件",
+    newHeading: "Vue 组件"
+});
+
+// 记录标签更新
+await this.logTagUpdate({
+    targetFile: "笔记/项目笔记.md",
+    sourceFile: "笔记/技术文档.md",
+    oldTag: "笔记/技术文档/React组件",
+    newTag: "笔记/技术文档/Vue组件"
+});
+
+// 记录错误
+await this.logError("处理文件修改时发生错误", error);
+
+// 记录一般信息
+await this.logInfo("插件加载完成", { version: "1.0.0" });
+```

@@ -1,4 +1,5 @@
 import { Notice, Plugin, TFile, MetadataCache } from "obsidian";
+import { Logger, defaultLogConfig } from "./src/logger";
 
 interface Heading {
 	heading: string;
@@ -9,6 +10,7 @@ interface Heading {
 
 export default class MyPlugin extends Plugin {
 	debug = true;
+	logger: Logger;
 	debugConsole: {
 		log: (...args: any) => void;
 		warn: (...args: any) => void;
@@ -29,6 +31,9 @@ export default class MyPlugin extends Plugin {
 	handleFileModificationBinded = this.handleFileModification.bind(this);
 	async onload() {
 		this.metadataCache = this.app.metadataCache;
+
+		// 初始化日志器
+		this.logger = new Logger(this.app, defaultLogConfig);
 
 		//todo 监听变化，改为了手动管理，暂时未发现问题
 		//this.registerEvent(
@@ -172,6 +177,7 @@ export default class MyPlugin extends Plugin {
 			}
 		} catch (error) {
 			this.debugConsole.error("处理文件修改时发生错误:", error);
+			await this.logger.logError("处理文件修改时发生错误", error);
 		} finally {
 			this.debugConsole.groupEnd();
 		}
@@ -322,18 +328,22 @@ export default class MyPlugin extends Plugin {
 		for (const targetFile of allFiles) {
 			// 使用 process 方法的回调函数进行原子性修改，避免覆盖其他修改
 			let hasChanges = false;
+			let linkPattern: RegExp;
+			let linkPattern2: RegExp;
+			let newPattern: string;
+			let newPattern2: string;
 			await this.app.vault.process(targetFile, (content) => {
 				let newContent = content;
 				const slash = `\\\\`; //斜杠
 				for (const heading of movedHeadings) {
-					const linkPattern = new RegExp(
+					linkPattern = new RegExp(
 						`\\[\\[${oldFile.basename}#${this.escapeRegExp(
 							heading.heading,
 						)}(\\|.*?)?\\]\\]`,
 						"g",
 					);
 					//* 为了更新query块
-					const linkPattern2 = new RegExp(
+					linkPattern2 = new RegExp(
 						`${slash}\\[${slash}\\[${oldFile.basename}#${this.escapeRegExp(
 							heading.heading,
 						)}(${slash}\\|.*?)?${slash}\\]${slash}\\]`,
@@ -343,14 +353,10 @@ export default class MyPlugin extends Plugin {
 					// 直接执行替换，通过比较替换前后内容判断是否有变化
 					// 避免使用 test() 导致的 lastIndex 副作用
 					const beforeReplace = newContent;
-					newContent = newContent.replace(
-						linkPattern,
-						`[[${newFile.basename}#${heading.newHeading}$1]]`,
-					);
-					newContent = newContent.replace(
-						linkPattern2,
-						`\\[\\[${newFile.basename}#${heading.newHeading}$1\\]\\]`,
-					);
+					newPattern = `[[${newFile.basename}#${heading.newHeading}$1]]`;
+					newContent = newContent.replace(linkPattern, newPattern);
+					newPattern2 = `\\[\\[${newFile.basename}#${heading.newHeading}$1\\]\\]`;
+					newContent = newContent.replace(linkPattern2, newPattern2);
 
 					if (newContent !== beforeReplace) {
 						this.debugConsole.log(
@@ -364,6 +370,20 @@ export default class MyPlugin extends Plugin {
 				if (hasChanges) {
 					new Notice(`${targetFile.path}中链接已更新`);
 					count++;
+					// 记录日志
+					for (const heading of movedHeadings) {
+						this.logger.writeLog({
+							type: "link",
+							timestamp: new Date().toLocaleString("zh-CN"),
+							message: `更新 Wiki 链接`,
+							details: {
+								修改文件: targetFile.path,
+								修改原因: `${oldFile.path}：${heading.heading}-->${newFile.path}：${heading.newHeading}`,
+								修改内容1: `'${linkPattern}'-->'${newPattern}'`,
+								修改内容2: `'${linkPattern2}'-->'${newPattern2}'`,
+							},
+						});
+					}
 				}
 
 				return newContent;
@@ -388,6 +408,8 @@ export default class MyPlugin extends Plugin {
 		for (const targetFile of allFiles) {
 			// 使用 process 方法的回调函数进行原子性修改，避免覆盖其他修改
 			let hasChanges = false;
+			let tagPattern: RegExp;
+			let newTag: string;
 			await this.app.vault.process(targetFile, (content) => {
 				let newContent = content;
 				for (const heading of movedHeadings) {
@@ -395,7 +417,7 @@ export default class MyPlugin extends Plugin {
 						0,
 						oldFile.path.lastIndexOf(oldFile.name),
 					);
-					const tagPattern = new RegExp(
+					tagPattern = new RegExp(
 						`#${this.escapeRegExp(prefix)}(\\S*?)${this.escapeRegExp(heading.heading)}([\n/ ])`,
 						"g",
 					);
@@ -407,14 +429,14 @@ export default class MyPlugin extends Plugin {
 						0,
 						newFile.path.lastIndexOf(newFile.name),
 					);
-					const tag = this.buildTags(newContent, heading.newHeading);
+					newTag = this.buildTags(newContent, heading.newHeading);
 
 					// 直接执行替换，通过比较替换前后内容判断是否有变化
 					// 避免使用 test() 导致的 lastIndex 副作用
 					const beforeReplace = newContent;
 					newContent = newContent.replace(
 						tagPattern,
-						`#${newPrefix}${tag}$2`,
+						`#${newPrefix}${newTag}$2`,
 					);
 
 					if (newContent !== beforeReplace) {
@@ -429,6 +451,19 @@ export default class MyPlugin extends Plugin {
 				if (hasChanges) {
 					new Notice(`${targetFile.path}中标签已更新`);
 					count++;
+					// 记录日志
+					for (const heading of movedHeadings) {
+						this.logger.writeLog({
+							type: "tag",
+							timestamp: new Date().toLocaleString("zh-CN"),
+							message: `更新标签路径`,
+							details: {
+								修改文件: targetFile.path,
+								修改原因: `${oldFile.path}：${heading.heading}-->${newFile.path}：${heading.newHeading}`,
+								修改内容: `'${tagPattern}'-->'${newTag}'`,
+							},
+						});
+					}
 				}
 
 				return newContent;
